@@ -239,7 +239,7 @@ class Smear(object):
 
 
     def random_gaussian_energy_spectra_parallel(self, true_spectrum,nProcs):
-        """ Smears the energy of a spectra object by generating
+        """ Smears the energy of a spectra object using multiprocessing  by generating
           a number of random points from a Gaussian pdf generated
           for that bin. The number of points generated is equivalent
           to the number of entries in that bin.
@@ -373,7 +373,7 @@ class Smear(object):
         return smeared_spectrum
     
     def weight_gaussian_energy_spectra_parallel(self, true_spectrum,nProcs,num_sigma=5.):
-        """ Smears the energy of a spectra object by generating
+        """ Smears the energy of a spectra object using multiprocessing  by generating
           a number of random points from a Gaussian pdf generated
           for that bin. The number of points generated is equivalent
           to the number of entries in that bin.
@@ -503,7 +503,7 @@ class Smear(object):
         return smeared_spectrum
 
     def random_gaussian_radius_spectra_parallel(self, true_spectrum,nProcs):
-        """ Smears the energy of a spectra object by generating
+        """ Smears the radius of a spectra object using multiprocessing by generating
           a number of random points from a Gaussian pdf generated
           for that bin. The number of points generated is equivalent
           to the number of entries in that bin.
@@ -635,7 +635,7 @@ class Smear(object):
         return smeared_spectrum
 
     def weight_gaussian_radius_spectra_parallel(self, true_spectrum,nProcs,num_sigma=5.):
-        """ Smears the energy of a spectra object by generating
+        """ Smears the radius of a spectra object using multiprocessing by generating
           a number of random points from a Gaussian pdf generated
           for that bin. The number of points generated is equivalent
           to the number of entries in that bin.
