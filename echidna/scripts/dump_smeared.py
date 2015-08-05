@@ -22,8 +22,10 @@ Examples:
 
 import echidna.output.store as store
 import echidna.core.smear as smear
+import time
 
 if __name__ == "__main__":
+    startTime = time.time()
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--smear_method", nargs='?', const="weight",
@@ -49,11 +51,20 @@ if __name__ == "__main__":
     if args.smear_method == "weight":  # Use default smear method
         smeared_spectrum = smearer.weight_gaussian_energy_spectra(spectrum)
         smeared_spectrum = smearer.weight_gaussian_radius_spectra(smeared_spectrum)
+    elif args.smear_method == "weight_parallel":  # Use default smear method
+        smeared_spectrum = smearer.weight_gaussian_energy_spectra_parallel(spectrum,4)
+        smeared_spectrum = smearer.weight_gaussian_radius_spectra_parallel(smeared_spectrum,4)
     elif args.smear_method == "random":
         smeared_spectrum = smearer.random_gaussian_energy_spectra(spectrum)
         smeared_spectrum = smearer.random_gaussian_radius_spectra(smeared_spectrum)
+    
+    elif args.smear_method == "random_parallel":
+        smeared_spectrum = smearer.random_gaussian_energy_spectra_parallel(spectrum,4)
+        smeared_spectrum = smearer.random_gaussian_radius_spectra_parallel(smeared_spectrum,4)
     else:  # Not a valid smear method
         parser.error(args.smear_method + " is not a valid smear method")
 
     filename = directory + filename + "_smeared" + ".hdf5"
     store.dump(filename, smeared_spectrum)
+    runTime = time.time()-startTime
+    print "Total Runtime was: ",runTime

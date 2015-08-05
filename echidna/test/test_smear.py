@@ -83,9 +83,31 @@ class TestSmear(unittest.TestCase):
         expected_sigma = numpy.sqrt(energy/200.)
         mean, sigma, integral = self.fit_gaussian_energy(smeared_spectra)
         self.assertTrue(energy < 1.01*mean and energy > 0.99*mean)
-        self.assertTrue(expected_sigma < 1.01*sigma and expected_sigma > 0.99*sigma)
+        self.assertTrue(expected_sigma < 1.01*sigma and expected_sigma > 0.99*sigma, msg="sigma {0} expected_sigma {1}".format(sigma,expected_sigma))
         self.assertAlmostEqual(integral/float(num_entries), 1.0)
 
+    def test_weight_energy_parallel(self):
+        """ Tests the weighted gaussian parallel smearing method for energy.
+
+        Creates a delta function and fits the mean and sigma after smearing.
+        Mean and sigma are checked against set values within 1 %.
+        Integral of smeared spectrum is checked against original number of
+        entries.
+        """
+        num_entries = 10000
+        test_spectra = spectra.Spectra("Test", num_entries)
+        energy = 2.5  # MeV
+        for i in range(num_entries):
+            test_spectra.fill(energy, 0, 0)
+        smearing = smear.Smear()
+        smearing._light_yield = 200.  # NHit per MeV
+        smeared_spectra = smearing.weight_gaussian_energy_spectra_parallel(test_spectra,4                             )
+        expected_sigma = numpy.sqrt(energy/200.)
+        mean, sigma, integral = self.fit_gaussian_energy(smeared_spectra)
+        self.assertTrue(energy < 1.01*mean and energy > 0.99*mean,)
+        self.assertTrue(expected_sigma < 1.01*sigma and expected_sigma > 0.99*sigma, msg="sigma {0} expected_sigma {1}".format(sigma,expected_sigma))
+        self.assertAlmostEqual(integral/float(num_entries), 1.0,msg="Integral {0}".format(integral))
+    
     def test_random_energy(self):
         """ Tests the random gaussian smearing method for energy.
 
@@ -108,6 +130,28 @@ class TestSmear(unittest.TestCase):
         self.assertTrue(expected_sigma < 1.01*sigma and expected_sigma > 0.99*sigma)
         self.assertAlmostEqual(integral/float(num_entries), 1.0)
 
+    def test_random_energy_parallel(self):
+        """ Tests the random gaussian parallel smearing method for energy.
+
+        Creates a delta function and fits the mean and sigma after smearing.
+        Mean and sigma are checked against set values within 1 %.
+        Integral of smeared spectrum is checked against original number of
+        entries.
+        """
+        num_entries = 100000
+        test_spectra = spectra.Spectra("Test",num_entries)
+        energy = 2.5  # MeV
+        for i in range(num_entries):
+            test_spectra.fill(energy, 0, 0)
+        smearing = smear.Smear()
+        smearing._light_yield = 200.  # NHit per MeV
+        smeared_spectra = smearing.random_gaussian_energy_spectra_parallel(test_spectra,4)
+        expected_sigma = numpy.sqrt(energy/200.)
+        mean, sigma, integral = self.fit_gaussian_energy(smeared_spectra)
+        self.assertTrue(energy < 1.01*mean and energy > 0.99*mean)
+        self.assertTrue(expected_sigma < 1.01*sigma and expected_sigma > 0.99*sigma)
+        self.assertAlmostEqual(integral/float(num_entries), 1.0)
+    
     def test_weight_radius(self):
         """ Tests the weighted gaussian smearing method for radius.
 
@@ -130,6 +174,28 @@ class TestSmear(unittest.TestCase):
         self.assertTrue(smearing._position_resolution < 1.01*sigma and smearing._position_resolution > 0.99*sigma)
         self.assertAlmostEqual(integral/float(num_entries), 1.0)
 
+    def test_weight_radius_parallel(self):
+        """ Tests the weighted gaussian parallel smearing method for radius.
+
+        Creates a delta function and fits the mean and sigma after smearing.
+        Mean and sigma are checked against set values within 1 %.
+        Integral of smeared spectrum is checked against original number of
+        entries.
+        """
+        num_entries = 10000
+        test_spectra = spectra.Spectra("Test", num_entries)
+        radius = 1000.  # mm
+        for i in range(num_entries):
+            test_spectra.fill(0, radius, 0)
+        smearing = smear.Smear()
+        smearing._position_resolution = 100.  # mm
+        smeared_spectra = smearing.weight_gaussian_radius_spectra_parallel(test_spectra,4,
+                                                                  )
+        mean, sigma, integral = self.fit_gaussian_radius(smeared_spectra)
+        self.assertTrue(radius < 1.01*mean and radius > 0.99*mean)
+        self.assertTrue(smearing._position_resolution < 1.01*sigma and smearing._position_resolution > 0.99*sigma)
+        self.assertAlmostEqual(integral/float(num_entries), 1.0,msg="Integral {0}".format(integral))
+
     def test_random_radius(self):
         """ Tests the random gaussian smearing method for radius.
 
@@ -146,6 +212,27 @@ class TestSmear(unittest.TestCase):
         smearing = smear.Smear()
         smearing._position_resolution = 100.  # mm
         smeared_spectra = smearing.random_gaussian_radius_spectra(test_spectra)
+        mean, sigma, integral = self.fit_gaussian_radius(smeared_spectra)
+        self.assertTrue(radius < 1.01*mean and radius > 0.99*mean)
+        self.assertTrue(smearing._position_resolution < 1.01*sigma and smearing._position_resolution > 0.99*sigma)
+        self.assertAlmostEqual(integral/float(num_entries), 1.0)
+    
+    def test_random_radius_parallel(self):
+        """ Tests the random parallel gaussian smearing method for radius.
+
+        Creates a delta function and fits the mean and sigma after smearing.
+        Mean and sigma are checked against set values within 1 %.
+        Integral of smeared spectrum is checked against original number of
+        entries.
+        """
+        num_entries = 100000
+        test_spectra = spectra.Spectra("Test", num_entries)
+        radius = 1000.  # mm
+        for i in range(num_entries):
+            test_spectra.fill(0, radius, 0)
+        smearing = smear.Smear()
+        smearing._position_resolution = 100.  # mm
+        smeared_spectra = smearing.random_gaussian_radius_spectra_parallel(test_spectra,4)
         mean, sigma, integral = self.fit_gaussian_radius(smeared_spectra)
         self.assertTrue(radius < 1.01*mean and radius > 0.99*mean)
         self.assertTrue(smearing._position_resolution < 1.01*sigma and smearing._position_resolution > 0.99*sigma)
