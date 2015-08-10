@@ -86,12 +86,16 @@ class TestLimitSetting(unittest.TestCase):
         limit_setter_1 = limit_setting.LimitSetting(self._signal,
                                                     floating_backgrounds=self._backgrounds[:1])
         self.assertRaises(TypeError, limit_setter_1.get_limit)
+        self.assertRaises(TypeError, limit_setter_1.get_limit_parallel,1)
         limit_setter_1.configure_signal(signal_config)
         self.assertRaises(KeyError, limit_setter_1.get_limit)
+        self.assertRaises(KeyError, limit_setter_1.get_limit_parallel,1)
         limit_setter_1.configure_background("bkg_1", bkg_1_config)
         self.assertRaises(TypeError, limit_setter_1.get_limit)
+        self.assertRaises(TypeError, limit_setter_1.get_limit_parallel,1)
         limit_setter_1.set_calculator(calculator)
 
+        
         # Test 2: different limits with and without penalty term
         # Define ROI
         roi = (mu - sigma, mu + sigma)
@@ -103,6 +107,7 @@ class TestLimitSetting(unittest.TestCase):
         limit_setter_2.configure_background("bkg_1", bkg_1_config)
         limit_setter_2.set_calculator(calculator)
         limit_2 = limit_setter_2.get_limit()
+        limit_2_parallel = limit_setter_2.get_limit_parallel(2)
 
         # Now try with a penalty term
         # set new config this time with more background counts to cycle through
@@ -114,7 +119,11 @@ class TestLimitSetting(unittest.TestCase):
 
         limit_setter_2.configure_background("bkg_1", bkg_1_penalty_config)
         limit_2_penalty = limit_setter_2.get_limit()
+        limit_2_penalty_parallel = limit_setter_2.get_limit_parallel(2)
         self.assertNotEqual(limit_2, limit_2_penalty)
+        self.assertNotEqual(limit_2_parallel, limit_2_penalty_parallel)
+        self.assertAlmostEqual(limit_2,limit_2_parallel)
+        self.assertAlmostEqual(limit_2_penalty,limit_2_penalty_parallel)
 
         # Test 3: Try with a second background
         # Configure bkg_2
@@ -131,9 +140,14 @@ class TestLimitSetting(unittest.TestCase):
         limit_setter_3.configure_background("bkg_2", bkg_2_config)
         limit_setter_3.set_calculator(calculator)
         limit_3 = limit_setter_3.get_limit()
+        limit_3_parallel = limit_setter_3.get_limit_parallel(2)
         self.assertNotEqual(limit_2, limit_3)
+        self.assertNotEqual(limit_2_parallel,limit_3_parallel)
+        self.assertAlmostEqual(limit_3,limit_3_parallel)
 
         # Check chi squareds have been recorded for each background
         for config in limit_setter_3._background_configs.values():
             chi_squareds = config._chi_squareds
             self.assertTrue(chi_squareds.shape[1] > 0)
+
+

@@ -17,6 +17,7 @@ Examples:
 .. note:: Use the -v option to print out progress and timing information
 """
 import numpy
+import time
 
 import echidna
 import echidna.output.store as store
@@ -203,7 +204,9 @@ if __name__ == "__main__":
     set_limit.set_calculator(calculator)
 
     # Calculate confidence limit
-    sig_num_decays = set_limit.get_limit()
+    start1 = time.time()
+    sig_num_decays = set_limit.get_limit_parallel(4)
+    runtime1 = time.time()-start1
     half_life = converter.counts_to_half_life(sig_num_decays)
     print ("90% CL with Te130_2n2b floating at: " +
            str(sig_num_decays) + " ROI counts")
@@ -272,7 +275,9 @@ if __name__ == "__main__":
     set_limit.set_calculator(calculator)
 
     # Calculate confidence limit
-    sig_num_decays = set_limit.get_limit()
+    start2 = time.time()
+    sig_num_decays = set_limit.get_limit_parallel(4)
+    runtime2 = time.time()-start2
     half_life = converter.counts_to_half_life(sig_num_decays)
     print ("90% CL, with all backgrounds floating, at: " +
            str(sig_num_decays) + " ROI counts")
@@ -287,3 +292,4 @@ if __name__ == "__main__":
     store.dump_ndarray("Te130_0n2b_config.hdf5", Te130_0n2b_config)
     store.dump_ndarray("Te130_0n2b_penalty_config.hdf5",
                        Te130_0n2b_penalty_config)
+    print "Total Runtime was: ",runtime1+runtime2

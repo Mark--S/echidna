@@ -1,10 +1,14 @@
 import numpy
-
+import os
 import echidna
 from echidna.errors.custom_errors import CompatibilityError
 import echidna.utilities as utilities
 import echidna.output.plot_root as plot
 import echidna.core.spectra as spectra
+import math
+import multiprocessing
+from multiprocessing import Process
+from multiprocessing import Queue
 
 
 class SystAnalyser(object):
@@ -323,16 +327,15 @@ class LimitSetting(object):
         Args:
           background_config (:class:`echidna.limit.limit_config.LimitConfig`):
           background configuration
+          .. note::
 
-        .. note::
+            Keyword arguments include:
+                
+                * plot_systematic (*bool*): if true produces signal vs systematic
+                  plots
+           Raises:
 
-          Keyword arguments include:
-
-            * plot_systematic (*bool*): if true produces signal vs systematic
-              plots
-
-        Raises:
-          TypeError: If config has not been set for signal.
+              TypeError: If config has not been set for signal.
         """
         if self._signal_config is None:
             raise TypeError("signal configuration not set")
@@ -341,6 +344,8 @@ class LimitSetting(object):
             self._syst_analysers[name] = SystAnalyser(
                 name+"_counts", self._signal_config._counts,
                 background_config._counts)
+
+
 
     def set_target(self, target):
         """ Sets target limit.
@@ -382,6 +387,7 @@ class LimitSetting(object):
         if self._target == {}:
             raise ValueError("Dictionary _target has not been set yet.")
         return self._target
+
 
     def set_calculator(self, calculator):
         """ Sets the chi squared calculator to use for limit setting
@@ -511,6 +517,121 @@ class LimitSetting(object):
         except IndexError as detail:
             raise IndexError("unable to calculate confidence limit - " +
                              str(detail))
+    
+            
+    def get_limit_parallel(self,nProcs,limit_chi_squared=2.71, **kwargs):
+        """ Get signal counts at limit.
+
+        Args:
+          limit_chi_squared (float, optional): chi squared required for
+            limit.
+
+        .. note::
+
+          Keyword arguments include:
+
+            * debug (*int*): specify the level of debug information to
+              output.
+
+        .. note::
+
+          Default value for :obj:`limit_chi_squared` is 2.71, the chi
+          squared value corresponding to a 90% confidence limit.
+
+        Returns:
+          float: Signal counts in ROI at required limit
+
+        Raises:
+          TypeError: If config has not been set for signal.
+          KeyError: If config has not been set for one or more
+            backgrounds.
+          IndexError: If no limit can be calculated. Relies on finding
+            the first bin with a chi squared value above
+            :obj:`limit_chi_squared`. If no bin contains a chi squared
+            value greater than :obj:`limit_chi_squared`, then there is
+            no bin to be found, raising IndexError.
+        """
+        
+        def Worker(limitSetter,lower,upper,out_q):
+            for signal_num in range(int(lower),int(upper)):
+                for syst_analyser in limitSetter._syst_analysers.values():
+                    syst_analyser._layer = 1  # reset layers
+                limitSetter._signal.scale(countsList[signal_num])
+                output = []
+                limitSetter._signal_config._current_count = countsList[signal_num]
+                chisq = limitSetter._get_chi_squared(limitSetter._floating_backgrounds,len(limitSetter._floating_backgrounds))
+                counts =  countsList[signal_num]  
+                sumVal = limitSetter._signal.sum()
+                output.append(chisq)
+                output.append(counts)
+                output.append(sumVal)
+                out_q.put(output)
+
+
+        if self._floating_backgrounds is None:
+            return self.get_limit_no_float_parallel(limit_chi_squared)
+        if self._signal_config is None:
+            raise TypeError("signal configuration not set")
+        if (len(self._background_configs) != len(self._floating_backgrounds)):
+            raise KeyError("missing configuration for one or more backgrounds")
+        if self._calculator is None:         
+            raise TypeError("chi squared calculator not set")
+        if self._data is None:
+            observed = numpy.zeros(shape=[self._signal._energy_bins],
+                                   dtype=float)
+            if self._fixed_background:
+                observed += self._fixed_background.project(0)
+            for background in self._floating_backgrounds:
+                config = self._background_configs.get(background._name)
+                background.scale(config._prior_count)
+                observed += background.project(0)
+            self._observed = observed
+        else:  # _data is not None
+            self._observed = self._data
+        self._signal_config.reset_chi_squareds()
+        fig_num = 0
+        #Create queue and processes 
+        out_q = Queue()
+        
+        procs = []
+        length = len(self._signal_config._counts)
+        chunksize = math.ceil(length/(float(nProcs)))
+        countsList = self._signal_config._counts
+        floatingBackgrounds = self._floating_backgrounds
+        for i in range(nProcs):
+             lower = chunksize*i
+             upper = chunksize*(i+1)
+             if upper > length:
+                 upper = length
+             p = multiprocessing.Process(target=Worker,args=(self,lower, upper,out_q))
+             procs.append(p)
+             p.start()
+        valueArray = []
+        for i in range(length):
+            values = out_q.get()
+            valueArray.append(values)
+    
+        valueArray.sort(key=lambda x : int(x[1]))
+        
+        for i in range(length):
+            values = valueArray[i]
+            self._signal_config.add_chi_squared(values[0],values[1],values[2])
+        
+        for p in procs:
+            p.join()
+        
+        
+        for syst_analyser in self._syst_analysers.values():
+            print syst_analyser._syst_values
+            syst_analyser._actual_counts = self._signal_config._chi_squareds[2]
+        try:
+            if self._signal_config.get_counts_down():  # Use get_last_bin_above
+                return self._signal_config.get_last_bin_above(limit_chi_squared)
+            else:
+                return self._signal_config.get_first_bin_above(limit_chi_squared)
+        except IndexError as detail:
+            raise IndexError("unable to calculate confidence limit - " +
+                             str(detail))
 
     def get_limit_no_float(self, limit_chi_squared=2.71):
         """ Get signal counts at limit.
@@ -561,6 +682,96 @@ class LimitSetting(object):
         except IndexError as detail:
             raise IndexError("unable to calculate confidence limit - " +
                              str(detail))
+
+    def get_limit_no_float_parallel(self,nProcs,limit_chi_squared=2.71, **kwargs):
+        
+        """ Get signal counts at limit.
+
+        Args:
+          limit_chi_squared (float, optional): chi squared required for
+            limit.
+
+        .. note::
+
+          Default value for :obj:`limit_chi_squared` is 2.71, the chi
+          squared value corresponding to a 90% confidence limit.
+
+        Returns:
+          float: Signal counts in ROI at required limit
+
+        Raises:
+          TypeError: If config has not been set for signal.
+          KeyError: If config has not been set for one or more
+            backgrounds.
+          IndexError: If no limit can be calculated. Relies on finding
+            the first bin with a chi squared value above
+            :obj:`limit_chi_squared`. If no bin contains a chi squared
+            value greater than :obj:`limit_chi_squared`, then there is
+            no bin to be found, raising IndexError.
+        """
+        def Worker(limitSetter,lower,upper,out_q):
+            for signal_num in range(int(lower),int(upper)):
+                for syst_analyser in limitSetter._syst_analysers.values():
+                    syst_analyser._layer = 1  # reset layers
+                limitSetter._signal.scale(countsList[signal_num])
+                expected = limitSetter._observed+self._signal.project(0)
+                output = []
+                limitSetter._signal_config._current_count = countsList[signal_num]
+                chisq = limitSetter._get_chi_squared(self._observed,expected)
+                counts =  countsList[signal_num]  
+                sumVal = limitSetter._signal.sum()
+                output.append(chisq)
+                output.append(counts)
+                output.append(sumVal)
+                out_q.put(output)
+
+        if self._signal_config is None:
+            raise TypeError("signal configuration not set")
+        if self._calculator is None:
+            raise TypeError("chi squared calculator not set")
+        if self._data is None:
+            self._observed = self._fixed_background.project(0)
+        else:
+            self._observed = self._data
+        self._signal_config.reset_chi_squareds()
+        fig_num = 0
+        #Create queue and processes 
+        out_q = Queue()
+        
+        procs = []
+        length = len(self._signal_config._counts)
+        chunksize = math.ceil(length/(float(nProcs)))
+        countsList = self._signal_config._counts
+        floatingBackgrounds = self._floating_backgrounds
+        for i in range(nProcs):
+             lower = chunksize*i
+             upper = chunksize*(i+1)
+             if upper > length:
+                 upper = length
+             p = multiprocessing.Process(target=Worker,args=(self,lower, upper,out_q))
+             procs.append(p)
+             p.start()
+        valueArray = []
+        for i in range(length):
+            values = out_q.get()
+            valueArray.append(values)
+    
+        valueArray.sort(key=lambda x : int(x[1]))
+        
+        for i in range(length):
+            values = valueArray[i]
+            self._signal_config.add_chi_squared(values[0],values[1],values[2])
+        
+        for p in procs:
+            p.join()
+        
+        try:
+            return self._signal_config.get_first_bin_above(limit_chi_squared)
+        except IndexError as detail:
+            raise IndexError("unable to calculate confidence limit - " +
+                             str(detail))
+        
+
 
     def _get_chi_squared(self, backgrounds, total_backgrounds, current=-1):
         """ Internal method to minimise chi squared for each background.
