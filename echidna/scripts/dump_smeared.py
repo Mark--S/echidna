@@ -18,6 +18,8 @@ Examples:
 
   * "weight", default
   * "random"
+  * "weight_parallel"
+  * "random_parallel"
 """
 
 import echidna.output.store as store
