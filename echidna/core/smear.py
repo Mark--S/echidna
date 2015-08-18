@@ -265,11 +265,11 @@ class Smear(object):
                          true_spectrum._time_bins)
             radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                            true_spectrum._radial_bins)
-            for time_bin in range(int(lower), int(upper)):
+            for time_bin in range(true_spectrum._time_bins):
                 mean_time = time_bin*time_step+0.5*time_step
                 for radial_bin in range(true_spectrum._radial_bins):
                     mean_radius = radial_bin*radial_step+0.5*radial_step
-                    for energy_bin in range(true_spectrum._energy_bins):
+                    for energy_bin in range(int(lower), int(upper)):
                         mean_energy = energy_bin*energy_step+0.5*energy_step
                         sigma = self.get_energy_sigma(mean_energy)
                         entries = true_spectrum._data[energy_bin,
@@ -288,14 +288,14 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._light_yield)+"_light_yield",
             true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._time_bins/float(nProcs))
+        chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
         out_q = Queue()
         procs = []
         for i in range(nProcs):
             lower = chunksize*i
             upper = chunksize*(i+1)
-            if upper > true_spectrum._time_bins:
-                upper = true_spectrum._time_bins
+            if upper > true_spectrum._energy_bins:
+                upper = true_spectrum._energy_bins
             p = (multiprocessing.Process(
                 target=worker,
                 args=(true_spectrum, lower, upper, out_q)))
@@ -398,11 +398,11 @@ class Smear(object):
                          true_spectrum._time_bins)
             radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                            true_spectrum._radial_bins)
-            for time_bin in range(int(lower), int(upper)):
+            for time_bin in range(true_spectrum._time_bins):
                 mean_time = time_bin*time_step+0.5*time_step
                 for radial_bin in range(true_spectrum._radial_bins):
                     mean_radius = radial_bin*radial_step+0.5*radial_step
-                    for energy_bin in range(true_spectrum._energy_bins):
+                    for energy_bin in range(int(lower), int(upper)):
                         mean_energy = energy_bin*energy_step+0.5*energy_step
                         sigma = self.get_energy_sigma(mean_energy)
                         entries = float(true_spectrum._data[energy_bin,
@@ -439,14 +439,14 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._light_yield)+"_light_yield",
             true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._time_bins/float(nProcs))
+        chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
         procs = []
         out_q = Queue()
         for i in range(nProcs):
             lower = chunksize*i
             upper = chunksize*(i+1)
-            if upper > true_spectrum._time_bins:
-                upper = true_spectrum._time_bins
+            if upper > true_spectrum._energy_bins:
+                upper = true_spectrum._energy_bins
             p = (multiprocessing.Process(
                 target=worker,
                 args=(true_spectrum, lower, upper, num_sigma, out_q)))
@@ -531,11 +531,11 @@ class Smear(object):
                          true_spectrum._time_bins)
             radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                            true_spectrum._radial_bins)
-            for time_bin in range(int(lower), int(upper)):
+            for time_bin in range(true_spectrum._time_bins):
                 mean_time = time_bin*time_step+0.5*time_step
                 for energy_bin in range(true_spectrum._energy_bins):
                     mean_energy = energy_bin*energy_step+0.5*energy_step
-                    for radial_bin in range(true_spectrum._radial_bins):
+                    for radial_bin in range(int(lower), int(upper)):
                         mean_radius = radial_bin*radial_step+0.5*radial_step
                         entries = true_spectrum._data[energy_bin,
                                                       radial_bin,
@@ -557,14 +557,14 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._light_yield)+"_light_yield",
             true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._time_bins/float(nProcs))
+        chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
         procs = []
         out_q = Queue()
         for i in range(nProcs):
             lower = chunksize*i
             upper = chunksize*(i+1)
-            if upper > true_spectrum._time_bins:
-                upper = true_spectrum._time_bins
+            if upper > true_spectrum._radial_bins:
+                upper = true_spectrum._radial_bins
             p = (multiprocessing.Process(
                 target=worker,
                 args=(true_spectrum, lower, upper, out_q)))
@@ -665,11 +665,11 @@ class Smear(object):
                          true_spectrum._time_bins)
             radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                            true_spectrum._radial_bins)
-            for time_bin in range(int(lower), int(upper)):
+            for time_bin in range(true_spectrum._time_bins):
                 mean_time = time_bin*time_step+0.5*time_step
                 for energy_bin in range(true_spectrum._energy_bins):
                     mean_energy = energy_bin*energy_step+0.5*energy_step
-                    for radial_bin in range(true_spectrum._radial_bins):
+                    for radial_bin in range(int(lower), int(upper)):
                         mean_radius = radial_bin*radial_step+0.5*radial_step
                         entries = float(true_spectrum._data[energy_bin,
                                                             radial_bin,
@@ -707,14 +707,14 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._light_yield)+"_light_yield",
             true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._time_bins/float(nProcs))
+        chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
         procs = []
         out_q = Queue()
         for i in range(nProcs):
             lower = chunksize*i
             upper = chunksize*(i+1)
-            if upper > true_spectrum._time_bins:
-                upper = true_spectrum._time_bins
+            if upper > true_spectrum._radial_bins:
+                upper = true_spectrum._radial_bins
             p = (multiprocessing.Process(
                 target=worker,
                 args=(true_spectrum, lower, upper, num_sigma, out_q)))
