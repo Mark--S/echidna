@@ -196,7 +196,38 @@ class Smear(object):
                 np.fabs(np.random.normal(radius, self._position_resolution)))
         return smeared_radii
 
-    def random_gaussian_energy_spectra(self, true_spectrum):
+    def random_gaussian_energy_kernel(self, true_spectrum, lower, upper, out_q):
+        smeared_chunk = spectra.Spectra(
+            true_spectrum._name+str(self._light_yield)+"_light_yield",
+            true_spectrum._num_decays)
+        raw_events = true_spectrum._raw_events
+        energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
+                       true_spectrum._energy_bins)
+        time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
+                     true_spectrum._time_bins)
+        radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
+                       true_spectrum._radial_bins)
+        for time_bin in range(true_spectrum._time_bins):
+            mean_time = time_bin*time_step+0.5*time_step
+            for radial_bin in range(true_spectrum._radial_bins):
+                mean_radius = radial_bin*radial_step+0.5*radial_step
+                for energy_bin in range(int(lower), int(upper)):
+                    mean_energy = energy_bin*energy_step+0.5*energy_step
+                    sigma = self.get_energy_sigma(mean_energy)
+                    entries = true_spectrum._data[energy_bin,
+                                                  radial_bin,
+                                                  time_bin]
+                    for i in range(int(entries)):
+                        try:
+                            num = np.fabs(np.random.normal(mean_energy, sigma))
+                            smeared_chunk.fill(num, mean_radius, mean_time)
+                        except ValueError:
+                            # Occurs when smeared energy is outside bin range
+                            print "Warning: Smeared energy out of bounds. Skipping."
+                            continue
+        out_q.put(smeared_chunk)
+
+    def random_gaussian_energy_spectra(self, true_spectrum, nProcs=1):
         """ Smears the energy of a spectra object by generating
           a number of random points from a Gaussian pdf generated
           for that bin. The number of points generated is equivalent
@@ -208,6 +239,9 @@ class Smear(object):
         Returns:
           A smeared spectra object.
         """
+        smeared_spectrum = spectra.Spectra(
+            true_spectrum._name+str(self._light_yield)+"_light_yield",
+            true_spectrum._num_decays)
         raw_events = true_spectrum._raw_events
         energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
                        true_spectrum._energy_bins)
@@ -215,116 +249,40 @@ class Smear(object):
                      true_spectrum._time_bins)
         radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                        true_spectrum._radial_bins)
-        smeared_spectrum = spectra.Spectra(
-            true_spectrum._name+str(self._light_yield)+"_light_yield",
-            true_spectrum._num_decays)
-        for time_bin in range(true_spectrum._time_bins):
-            mean_time = time_bin*time_step+0.5*time_step
-            for radial_bin in range(true_spectrum._radial_bins):
-                mean_radius = radial_bin*radial_step+0.5*radial_step
-                for energy_bin in range(true_spectrum._energy_bins):
-                    mean_energy = energy_bin*energy_step+0.5*energy_step
-                    sigma = self.get_energy_sigma(mean_energy)
-                    entries = true_spectrum._data[energy_bin,
-                                                  radial_bin,
-                                                  time_bin]
-                    for i in range(int(entries)):
-                        try:
-                            smeared_spectrum.fill(
-                                np.fabs(np.random.normal(mean_energy, sigma)),
-                                mean_radius, mean_time)
-                        except ValueError:
-                            # Occurs when smeared energy is outside bin range
-                            print ("Warning: Smeared energy \
-                                   out of bounds. Skipping.")
-                            continue
         smeared_spectrum._raw_events = raw_events
-        return smeared_spectrum
-
-    def random_gaussian_energy_spectra_parallel(self, true_spectrum, nProcs):
-        """ Smears the energy of a spectra object using multiprocessing  by generating
-          a number of random points from a Gaussian pdf generated
-          for that bin. The number of points generated is equivalent
-          to the number of entries in that bin.
-
-        Args:
-          true_spectrum (spectra): spectrum to be smeared
-          nProcs (int) : number of python subprocesses to generate
-
-        Returns:
-          spectra :  smeared spectra object.
-        """
-        def worker(true_spectrum, lower, upper, out_q):
-            smeared_chunk = spectra.Spectra(
-                true_spectrum._name+str(self._light_yield)+"_light_yield",
-                true_spectrum._num_decays)
-            raw_events = true_spectrum._raw_events
-            energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
-                           true_spectrum._energy_bins)
-            time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
-                         true_spectrum._time_bins)
-            radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
-                           true_spectrum._radial_bins)
-            for time_bin in range(true_spectrum._time_bins):
-                mean_time = time_bin*time_step+0.5*time_step
-                for radial_bin in range(true_spectrum._radial_bins):
-                    mean_radius = radial_bin*radial_step+0.5*radial_step
-                    for energy_bin in range(int(lower), int(upper)):
-                        mean_energy = energy_bin*energy_step+0.5*energy_step
-                        sigma = self.get_energy_sigma(mean_energy)
-                        entries = true_spectrum._data[energy_bin,
-                                                      radial_bin,
-                                                      time_bin]
-                        for i in range(int(entries)):
-                            try:
-                                num = np.fabs(np.random.normal(mean_energy, sigma))
-                                smeared_chunk.fill(num, mean_radius, mean_time)
-                            except ValueError:
-                                # Occurs when smeared energy is outside bin range
-                                print "Warning: Smeared energy out of bounds. Skipping."
-                                continue
-            out_q.put(smeared_chunk)
-
-        smeared_spectrum = spectra.Spectra(
-            true_spectrum._name+str(self._light_yield)+"_light_yield",
-            true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
         out_q = Queue()
-        procs = []
-        for i in range(nProcs):
-            lower = chunksize*i
-            upper = chunksize*(i+1)
-            if upper > true_spectrum._energy_bins:
-                upper = true_spectrum._energy_bins
-            p = (multiprocessing.Process(
-                target=worker,
-                args=(true_spectrum, lower, upper, out_q)))
-            procs.append(p)
-            p.start()
 
-        for i in range(nProcs):
+        if nProcs == 1:
+            self.random_gaussian_energy_kernel(true_spectrum, 0, true_spectrum._energy_bins, out_q)
             smeared_chunk = out_q.get()
             smeared_spectrum.add(smeared_chunk)
 
-        for p in procs:
-            p.join()
+        elif nProcs > 1:
+            procs = []
+            chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
+            for i in range(nProcs):
+                lower = chunksize*i
+                upper = chunksize*(i+1)
+                if upper > true_spectrum._energy_bins:
+                    upper = true_spectrum._energy_bins
+                p = (multiprocessing.Process(
+                    target=self.random_gaussian_energy_kernel,
+                    args=(true_spectrum, lower, upper, out_q)))
+                procs.append(p)
+                p.start()
 
-        smeared_spectrum._raw_events = true_spectrum._raw_events
+            for i in range(nProcs):
+                smeared_chunk = out_q.get()
+                smeared_spectrum.add(smeared_chunk)
+
+            for p in procs:
+                p.join()
+
         return smeared_spectrum
 
-    def weight_gaussian_energy_spectra(self, true_spectrum, num_sigma=5.):
-        """ Smears the energy of a spectra object by calculating a
-          Gaussian pdf for each bin and applying a weight to the bin
-          and corresponding bins a default 5 sigma apart.
-
-        Args:
-          true_spectrum (spectra): spectrum to be smeared
-          num_sigma (float): Width of window to apply the weight method.
-            Default is 5.
-
-        Returns:
-          A smeared spectra object.
-        """
+    def weight_gaussian_energy_kernel(self, true_spectrum, lower, upper, num_sigma, out_q):
+        smeared_chunk = spectra.Spectra(
+            true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
         raw_events = true_spectrum._raw_events
         energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
                        true_spectrum._energy_bins)
@@ -332,14 +290,11 @@ class Smear(object):
                      true_spectrum._time_bins)
         radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
                        true_spectrum._radial_bins)
-        smeared_spectrum = spectra.Spectra(
-            true_spectrum._name+str(self._light_yield)+"_light_yield",
-            true_spectrum._num_decays)
         for time_bin in range(true_spectrum._time_bins):
             mean_time = time_bin*time_step+0.5*time_step
             for radial_bin in range(true_spectrum._radial_bins):
                 mean_radius = radial_bin*radial_step+0.5*radial_step
-                for energy_bin in range(true_spectrum._energy_bins):
+                for energy_bin in range(int(lower), int(upper)):
                     mean_energy = energy_bin*energy_step+0.5*energy_step
                     sigma = self.get_energy_sigma(mean_energy)
                     entries = float(true_spectrum._data[energy_bin,
@@ -364,7 +319,7 @@ class Smear(object):
                     tot_weight = np.array(weights).sum()
                     for energy in np.arange(lower_bin, upper_bin, energy_step):
                         try:
-                            smeared_spectrum.fill(
+                            smeared_chunk.fill(
                                 energy, mean_radius, mean_time,
                                 entries*weights[i]/tot_weight)
                         except ValueError:
@@ -372,98 +327,95 @@ class Smear(object):
                             print "Warning: Smeared energy out of bounds. Skipping."
                             continue
                         i += 1
-        smeared_spectrum._raw_events = raw_events
-        return smeared_spectrum
+        out_q.put(smeared_chunk)
 
-    def weight_gaussian_energy_spectra_parallel(self, true_spectrum, nProcs, num_sigma=5.):
-        """ Smears the energy of a spectra object using multiprocessing  by generating
-          a number of random points from a Gaussian pdf generated
-          for that bin. The number of points generated is equivalent
-          to the number of entries in that bin.
+    def weight_gaussian_energy_spectra(self, true_spectrum, num_sigma=5., nProcs=1):
+        """ Smears the energy of a spectra object by calculating a
+          Gaussian pdf for each bin and applying a weight to the bin
+          and corresponding bins a default 5 sigma apart.
 
         Args:
           true_spectrum (spectra): spectrum to be smeared
-          nProcs (int) : number of python subprocesses to create
+          num_sigma (float): Width of window to apply the weight method.
+            Default is 5.
 
         Returns:
           A smeared spectra object.
         """
-        def worker(true_spectrum, lower, upper, num_sigma, out_q):
-            smeared_chunk = spectra.Spectra(
-                true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
-            raw_events = true_spectrum._raw_events
-            energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
-                           true_spectrum._energy_bins)
-            time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
-                         true_spectrum._time_bins)
-            radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
-                           true_spectrum._radial_bins)
-            for time_bin in range(true_spectrum._time_bins):
-                mean_time = time_bin*time_step+0.5*time_step
-                for radial_bin in range(true_spectrum._radial_bins):
-                    mean_radius = radial_bin*radial_step+0.5*radial_step
-                    for energy_bin in range(int(lower), int(upper)):
-                        mean_energy = energy_bin*energy_step+0.5*energy_step
-                        sigma = self.get_energy_sigma(mean_energy)
-                        entries = float(true_spectrum._data[energy_bin,
-                                                            radial_bin,
-                                                            time_bin])
-                        if entries == 0:
-                            continue  # Bin Empty
-                        lower_bin = self.floor_to_bin(mean_energy-num_sigma*sigma,
-                                                      energy_step)+0.5*energy_step
-                        upper_bin = self.ceil_to_bin(mean_energy+num_sigma*sigma,
-                                                     energy_step)-0.5*energy_step
-                        if upper_bin > true_spectrum._energy_high:
-                            upper_bin = true_spectrum._energy_high-0.5*energy_step
-                        if lower_bin < true_spectrum._energy_low:
-                            lower_bin = true_spectrum._energy_low+0.5*energy_step
-                        weights = []
-                        for energy in np.arange(lower_bin, upper_bin, energy_step):
-                            weights.append(self.calc_gaussian(energy,
-                                                              mean_energy,
-                                                              sigma))
-                        i = 0
-                        tot_weight = np.array(weights).sum()
-                        for energy in np.arange(lower_bin, upper_bin, energy_step):
-                            try:
-                                smeared_chunk.fill(
-                                    energy, mean_radius, mean_time,
-                                    entries*weights[i]/tot_weight)
-                            except ValueError:
-                                # Occurs when smeared energy is outside bin range
-                                print "Warning: Smeared energy out of bounds. Skipping."
-                                continue
-                            i += 1
-            out_q.put(smeared_chunk)
+        raw_events = true_spectrum._raw_events
+        energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
+                       true_spectrum._energy_bins)
+        time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
+                     true_spectrum._time_bins)
+        radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
+                       true_spectrum._radial_bins)
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._light_yield)+"_light_yield",
             true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
-        procs = []
+        smeared_spectrum._raw_events = raw_events
         out_q = Queue()
-        for i in range(nProcs):
-            lower = chunksize*i
-            upper = chunksize*(i+1)
-            if upper > true_spectrum._energy_bins:
-                upper = true_spectrum._energy_bins
-            p = (multiprocessing.Process(
-                target=worker,
-                args=(true_spectrum, lower, upper, num_sigma, out_q)))
-            procs.append(p)
-            p.start()
-
-        for i in range(nProcs):
+        if nProcs == 1:
+            self.weight_gaussian_energy_kernel(true_spectrum, 0, true_spectrum._energy_bins, num_sigma, out_q)
             smeared_chunk = out_q.get()
             smeared_spectrum.add(smeared_chunk)
 
-        for p in procs:
-            p.join()
+        elif nProcs > 1:
+            procs = []
+            chunksize = np.ceil(true_spectrum._energy_bins/float(nProcs))
+            for i in range(nProcs):
+                lower = chunksize*i
+                upper = chunksize*(i+1)
+                if upper > true_spectrum._energy_bins:
+                    upper = true_spectrum._energy_bins
+                p = (multiprocessing.Process(
+                    target=self.weight_gaussian_energy_kernel,
+                    args=(true_spectrum, lower, upper, num_sigma, out_q)))
+                procs.append(p)
+                p.start()
 
-        smeared_spectrum._raw_events = true_spectrum._raw_events
+            for i in range(nProcs):
+                smeared_chunk = out_q.get()
+                smeared_spectrum.add(smeared_chunk)
+
+            for p in procs:
+                p.join()
+
         return smeared_spectrum
 
-    def random_gaussian_radius_spectra(self, true_spectrum):
+    def random_gaussian_radius_kernel(self, true_spectrum, lower, upper, out_q):
+        smeared_chunk = spectra.Spectra(
+            true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
+        raw_events = true_spectrum._raw_events
+        energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
+                       true_spectrum._energy_bins)
+        time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
+                     true_spectrum._time_bins)
+        radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
+                       true_spectrum._radial_bins)
+        for time_bin in range(true_spectrum._time_bins):
+            mean_time = time_bin*time_step+0.5*time_step
+            for energy_bin in range(true_spectrum._energy_bins):
+                mean_energy = energy_bin*energy_step+0.5*energy_step
+                for radial_bin in range(int(lower), int(upper)):
+                    mean_radius = radial_bin*radial_step+0.5*radial_step
+                    entries = true_spectrum._data[energy_bin,
+                                                  radial_bin,
+                                                  time_bin]
+                    for i in range(int(entries)):
+                        try:
+                            smeared_chunk.fill(
+                                mean_energy,
+                                np.fabs(np.random.normal(
+                                    mean_radius, self._position_resolution)),
+                                mean_time)
+                        except ValueError:
+                            # Occurs when smeared radius is outside bin range
+                            print "Warning: Smeared radius out of bounds. Skipping."
+                            continue
+
+        out_q.put(smeared_chunk)
+
+    def random_gaussian_radius_spectra(self, true_spectrum, nProcs=1):
         """ Smears the radius of a spectra object by generating a
           number of random points from a Gaussian pdf generated for
           that bin. The number of points generated is equivalent to the
@@ -485,103 +437,86 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._position_resolution)+"_position_resolution",
             true_spectrum._num_decays)
+        out_q = Queue()
+        if nProcs == 1:
+            self.random_gaussian_radius_kernel(true_spectrum, 0, true_spectrum._radial_bins, out_q)
+            smeared_chunk = out_q.get()
+            smeared_spectrum.add(smeared_chunk)
+
+        elif nProcs > 1:
+            procs = []
+            chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
+            for i in range(nProcs):
+                lower = chunksize*i
+                upper = chunksize*(i+1)
+                if upper > true_spectrum._energy_bins:
+                    upper = true_spectrum._energy_bins
+                p = (multiprocessing.Process(
+                    target=self.random_gaussian_radius_kernel,
+                    args=(true_spectrum, lower, upper, out_q)))
+                procs.append(p)
+                p.start()
+
+            for i in range(nProcs):
+                smeared_chunk = out_q.get()
+                smeared_spectrum.add(smeared_chunk)
+
+            for p in procs:
+                p.join()
+
+        smeared_spectrum._raw_events = raw_events
+        return smeared_spectrum
+
+    def weight_gaussian_radius_spectra_kernel(self, true_spectrum, lower, upper, num_sigma, out_q):
+        smeared_chunk = spectra.Spectra(
+            true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
+        raw_events = true_spectrum._raw_events
+        energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
+                       true_spectrum._energy_bins)
+        time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
+                     true_spectrum._time_bins)
+        radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
+                       true_spectrum._radial_bins)
         for time_bin in range(true_spectrum._time_bins):
             mean_time = time_bin*time_step+0.5*time_step
             for energy_bin in range(true_spectrum._energy_bins):
                 mean_energy = energy_bin*energy_step+0.5*energy_step
-                for radial_bin in range(true_spectrum._radial_bins):
+                for radial_bin in range(int(lower), int(upper)):
                     mean_radius = radial_bin*radial_step+0.5*radial_step
-                    entries = true_spectrum._data[energy_bin,
-                                                  radial_bin,
-                                                  time_bin]
-                    for i in range(int(entries)):
+                    entries = float(true_spectrum._data[energy_bin,
+                                                        radial_bin,
+                                                        time_bin])
+                    if entries == 0:
+                        # Bin Empty
+                        continue
+                    lower_bin = self.floor_to_bin(mean_radius-num_sigma*self._position_resolution,
+                                                  radial_step)+0.5*radial_step
+                    upper_bin = self.ceil_to_bin(mean_radius+num_sigma*self._position_resolution,
+                                                 radial_step)-0.5*radial_step
+                    if upper_bin > true_spectrum._radial_high:
+                        upper_bin = true_spectrum._radial_high-0.5*energy_step
+                    if lower_bin < true_spectrum._radial_low:
+                        lower_bin = true_spectrum._radial_low+0.5*energy_step
+                    weights = []
+                    for radius in np.arange(lower_bin, upper_bin, radial_step):
+                        weights.append(
+                            self.calc_gaussian(radius, mean_radius,
+                                               self._position_resolution))
+                    weight_tot = np.array(weights).sum()
+                    i = 0
+                    for radius in np.arange(lower_bin, upper_bin, radial_step):
                         try:
-                            smeared_spectrum.fill(
-                                mean_energy,
-                                np.fabs(np.random.normal(
-                                    mean_radius, self._position_resolution)),
-                                mean_time)
+                            smeared_chunk.fill(
+                                mean_energy, radius, mean_time,
+                                entries*weights[i]/weight_tot)
                         except ValueError:
                             # Occurs when smeared radius is outside bin range
                             print "Warning: Smeared radius out of bounds. Skipping."
                             continue
-        smeared_spectrum._raw_events = raw_events
-        return smeared_spectrum
+                        i += 1
+        out_q.put(smeared_chunk)
 
-    def random_gaussian_radius_spectra_parallel(self, true_spectrum, nProcs):
-        """ Smears the radius of a spectra object using multiprocessing by generating
-          a number of random points from a Gaussian pdf generated
-          for that bin. The number of points generated is equivalent
-          to the number of entries in that bin.
-
-        Args:
-          true_spectrum (spectra): spectrum to be smeared
-          nProcs (int) : number of python subprocesses to generate
-
-        Returns:
-          A smeared spectra object.
-        """
-        def worker(true_spectrum, lower, upper, out_q):
-            smeared_chunk = spectra.Spectra(
-                true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
-            raw_events = true_spectrum._raw_events
-            energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
-                           true_spectrum._energy_bins)
-            time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
-                         true_spectrum._time_bins)
-            radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
-                           true_spectrum._radial_bins)
-            for time_bin in range(true_spectrum._time_bins):
-                mean_time = time_bin*time_step+0.5*time_step
-                for energy_bin in range(true_spectrum._energy_bins):
-                    mean_energy = energy_bin*energy_step+0.5*energy_step
-                    for radial_bin in range(int(lower), int(upper)):
-                        mean_radius = radial_bin*radial_step+0.5*radial_step
-                        entries = true_spectrum._data[energy_bin,
-                                                      radial_bin,
-                                                      time_bin]
-                        for i in range(int(entries)):
-                            try:
-                                smeared_chunk.fill(
-                                    mean_energy,
-                                    np.fabs(np.random.normal(
-                                        mean_radius, self._position_resolution)),
-                                    mean_time)
-                            except ValueError:
-                                # Occurs when smeared radius is outside bin range
-                                print "Warning: Smeared radius out of bounds. Skipping."
-                                continue
-
-            out_q.put(smeared_chunk)
-
-        smeared_spectrum = spectra.Spectra(
-            true_spectrum._name+str(self._light_yield)+"_light_yield",
-            true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
-        procs = []
-        out_q = Queue()
-        for i in range(nProcs):
-            lower = chunksize*i
-            upper = chunksize*(i+1)
-            if upper > true_spectrum._radial_bins:
-                upper = true_spectrum._radial_bins
-            p = (multiprocessing.Process(
-                target=worker,
-                args=(true_spectrum, lower, upper, out_q)))
-            procs.append(p)
-            p.start()
-
-        for i in range(nProcs):
-            smeared_chunk = out_q.get()
-            smeared_spectrum.add(smeared_chunk)
-
-        for p in procs:
-            p.join()
-
-        smeared_spectrum._raw_events = true_spectrum._raw_events
-        return smeared_spectrum
-
-    def weight_gaussian_radius_spectra(self, true_spectrum, num_sigma=5.):
+    def weight_gaussian_radius_spectra(self, true_spectrum, num_sigma=5., nProcs=1):
         """ Smears the radius of a spectra object by calculating a
           Gaussian pdf for each bin and applies a weight to the bin and
           corresponding bins a default 5 sigma apart.
@@ -604,131 +539,34 @@ class Smear(object):
         smeared_spectrum = spectra.Spectra(
             true_spectrum._name+str(self._position_resolution)+"_position_resolution",
             true_spectrum._num_decays)
-        for time_bin in range(true_spectrum._time_bins):
-            mean_time = time_bin*time_step+0.5*time_step
-            for energy_bin in range(true_spectrum._energy_bins):
-                mean_energy = energy_bin*energy_step+0.5*energy_step
-                for radial_bin in range(true_spectrum._radial_bins):
-                    mean_radius = radial_bin*radial_step+0.5*radial_step
-                    entries = float(true_spectrum._data[energy_bin,
-                                                        radial_bin,
-                                                        time_bin])
-                    if entries == 0:
-                        continue  # Bin Empty
-                    lower_bin = self.floor_to_bin(mean_radius-num_sigma*self._position_resolution,
-                                                  radial_step)+0.5*radial_step
-                    upper_bin = self.ceil_to_bin(mean_radius+num_sigma*self._position_resolution,
-                                                 radial_step)-0.5*radial_step
-                    if upper_bin > true_spectrum._radial_high:
-                        upper_bin = true_spectrum._radial_high-0.5*energy_step
-                    if lower_bin < true_spectrum._radial_low:
-                        lower_bin = true_spectrum._radial_low+0.5*energy_step
-                    weights = []
-                    for radius in np.arange(lower_bin, upper_bin, radial_step):
-                        weights.append(
-                            self.calc_gaussian(radius, mean_radius,
-                                               self._position_resolution))
-                    weight_tot = np.array(weights).sum()
-                    i = 0
-                    for radius in np.arange(lower_bin, upper_bin, radial_step):
-                        try:
-                            smeared_spectrum.fill(
-                                mean_energy, radius, mean_time,
-                                entries*weights[i]/weight_tot)
-                        except ValueError:
-                            # Occurs when smeared radius is outside bin range
-                            print "Warning: Smeared radius out of bounds. Skipping."
-                            continue
-                        i += 1
-        smeared_spectrum._raw_events = raw_events
-        return smeared_spectrum
-
-    def weight_gaussian_radius_spectra_parallel(self, true_spectrum, nProcs, num_sigma=5.):
-        """ Smears the radius of a spectra object using multiprocessing by generating
-          a number of random points from a Gaussian pdf generated
-          for that bin. The number of points generated is equivalent
-          to the number of entries in that bin.
-
-        Args:
-          true_spectrum (spectra): spectrum to be smeared
-
-        Returns:
-          A smeared spectra object.
-        """
-        def worker(true_spectrum, lower, upper, num_sigma, out_q):
-            smeared_chunk = spectra.Spectra(
-                true_spectrum._name+str(self._light_yield)+"_light_yield", 0)
-            raw_events = true_spectrum._raw_events
-            energy_step = ((true_spectrum._energy_high-true_spectrum._energy_low) /
-                           true_spectrum._energy_bins)
-            time_step = ((true_spectrum._time_high-true_spectrum._time_low) /
-                         true_spectrum._time_bins)
-            radial_step = ((true_spectrum._radial_high-true_spectrum._radial_low) /
-                           true_spectrum._radial_bins)
-            for time_bin in range(true_spectrum._time_bins):
-                mean_time = time_bin*time_step+0.5*time_step
-                for energy_bin in range(true_spectrum._energy_bins):
-                    mean_energy = energy_bin*energy_step+0.5*energy_step
-                    for radial_bin in range(int(lower), int(upper)):
-                        mean_radius = radial_bin*radial_step+0.5*radial_step
-                        entries = float(true_spectrum._data[energy_bin,
-                                                            radial_bin,
-                                                            time_bin])
-                        if entries == 0:
-                            # Bin Empty
-                            continue
-                        lower_bin = self.floor_to_bin(mean_radius-num_sigma*self._position_resolution,
-                                                      radial_step)+0.5*radial_step
-                        upper_bin = self.ceil_to_bin(mean_radius+num_sigma*self._position_resolution,
-                                                     radial_step)-0.5*radial_step
-                        if upper_bin > true_spectrum._radial_high:
-                            upper_bin = true_spectrum._radial_high-0.5*energy_step
-                        if lower_bin < true_spectrum._radial_low:
-                            lower_bin = true_spectrum._radial_low+0.5*energy_step
-                        weights = []
-                        for radius in np.arange(lower_bin, upper_bin, radial_step):
-                            weights.append(
-                                self.calc_gaussian(radius, mean_radius,
-                                                   self._position_resolution))
-                        weight_tot = np.array(weights).sum()
-                        i = 0
-                        for radius in np.arange(lower_bin, upper_bin, radial_step):
-                            try:
-                                smeared_chunk.fill(
-                                    mean_energy, radius, mean_time,
-                                    entries*weights[i]/weight_tot)
-                            except ValueError:
-                                # Occurs when smeared radius is outside bin range
-                                print "Warning: Smeared radius out of bounds. Skipping."
-                                continue
-                            i += 1
-            out_q.put(smeared_chunk)
-
-        smeared_spectrum = spectra.Spectra(
-            true_spectrum._name+str(self._light_yield)+"_light_yield",
-            true_spectrum._num_decays)
-        chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
-        procs = []
         out_q = Queue()
-        for i in range(nProcs):
-            lower = chunksize*i
-            upper = chunksize*(i+1)
-            if upper > true_spectrum._radial_bins:
-                upper = true_spectrum._radial_bins
-            p = (multiprocessing.Process(
-                target=worker,
-                args=(true_spectrum, lower, upper, num_sigma, out_q)))
-            procs.append(p)
-            p.start()
-
-        for i in range(nProcs):
+        if nProcs == 1:
+            self.weight_gaussian_radius_spectra_kernel(true_spectrum, 0, true_spectrum._radial_bins, num_sigma, out_q)
             smeared_chunk = out_q.get()
             smeared_spectrum.add(smeared_chunk)
 
-        for p in procs:
-            p.join()
+        elif nProcs > 1:
+            procs = []
+            chunksize = np.ceil(true_spectrum._radial_bins/float(nProcs))
+            for i in range(nProcs):
+                lower = chunksize*i
+                upper = chunksize*(i+1)
+                if upper > true_spectrum._radial_bins:
+                    upper = true_spectrum._radial_bins
+                p = (multiprocessing.Process(
+                    target=self.weight_gaussian_radius_spectra_kernel,
+                    args=(true_spectrum, lower, upper, num_sigma, out_q)))
+                procs.append(p)
+                p.start()
 
-        smeared_spectrum._raw_events = true_spectrum._raw_events
+            for i in range(nProcs):
+                smeared_chunk = out_q.get()
+                smeared_spectrum.add(smeared_chunk)
+
+            for p in procs:
+                p.join()
+
+        smeared_spectrum._raw_events = raw_events
         return smeared_spectrum
 
 

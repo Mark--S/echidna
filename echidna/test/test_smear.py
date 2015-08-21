@@ -101,7 +101,7 @@ class TestSmear(unittest.TestCase):
             test_spectra.fill(energy, 0, 0)
         smearing = smear.Smear()
         smearing._light_yield = 200.  # NHit per MeV
-        smeared_spectra = smearing.weight_gaussian_energy_spectra_parallel(test_spectra,4                             )
+        smeared_spectra = smearing.weight_gaussian_energy_spectra(test_spectra,nProcs=4                             )
         expected_sigma = numpy.sqrt(energy/200.)
         mean, sigma, integral = self.fit_gaussian_energy(smeared_spectra)
         self.assertTrue(energy < 1.01*mean and energy > 0.99*mean,)
@@ -145,7 +145,7 @@ class TestSmear(unittest.TestCase):
             test_spectra.fill(energy, 0, 0)
         smearing = smear.Smear()
         smearing._light_yield = 200.  # NHit per MeV
-        smeared_spectra = smearing.random_gaussian_energy_spectra_parallel(test_spectra,4)
+        smeared_spectra = smearing.random_gaussian_energy_spectra(test_spectra,4)
         expected_sigma = numpy.sqrt(energy/200.)
         mean, sigma, integral = self.fit_gaussian_energy(smeared_spectra)
         self.assertTrue(energy < 1.01*mean and energy > 0.99*mean)
@@ -189,7 +189,7 @@ class TestSmear(unittest.TestCase):
             test_spectra.fill(0, radius, 0)
         smearing = smear.Smear()
         smearing._position_resolution = 100.  # mm
-        smeared_spectra = smearing.weight_gaussian_radius_spectra_parallel(test_spectra,4,
+        smeared_spectra = smearing.weight_gaussian_radius_spectra(test_spectra,nProcs=4
                                                                   )
         mean, sigma, integral = self.fit_gaussian_radius(smeared_spectra)
         self.assertTrue(radius < 1.01*mean and radius > 0.99*mean)
@@ -232,7 +232,7 @@ class TestSmear(unittest.TestCase):
             test_spectra.fill(0, radius, 0)
         smearing = smear.Smear()
         smearing._position_resolution = 100.  # mm
-        smeared_spectra = smearing.random_gaussian_radius_spectra_parallel(test_spectra,4)
+        smeared_spectra = smearing.random_gaussian_radius_spectra(test_spectra,4)
         mean, sigma, integral = self.fit_gaussian_radius(smeared_spectra)
         self.assertTrue(radius < 1.01*mean and radius > 0.99*mean)
         self.assertTrue(smearing._position_resolution < 1.01*sigma and smearing._position_resolution > 0.99*sigma)
